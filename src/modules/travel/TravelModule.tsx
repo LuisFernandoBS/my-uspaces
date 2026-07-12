@@ -164,8 +164,8 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
     if (!selectedTripId) return;
 
     const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId);
-    if (!selectedTrip?.destino.trim()) {
-      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: getWeatherPlaceholder() }));
+    if (!selectedTrip || !selectedTrip.destino?.trim()) {
+      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip?.dataInicio ?? '']: getWeatherPlaceholder() } }));
       return;
     }
 
@@ -454,7 +454,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
             </div>
 
                 <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {(() => {
+                  {selectedTrip ? (() => {
                     const start = new Date(selectedTrip.dataInicio);
                     const end = new Date(selectedTrip.dataFim);
                     const dayKeys: string[] = [];
@@ -472,7 +472,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                         </div>
                       );
                     });
-                  })()}
+                  })() : null}
                 </div>
             <button
               type="button"
