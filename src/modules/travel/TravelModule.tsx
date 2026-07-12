@@ -60,6 +60,46 @@ const formatDate = (dateValue: string) => {
   });
 };
 
+type CountdownStatus = 'upcoming' | 'ongoing' | 'past';
+
+interface Countdown {
+  text: string;
+  status: CountdownStatus;
+}
+
+const getCountdown = (dataInicio: string, dataFim: string): Countdown | null => {
+  const start = new Date(dataInicio);
+  const end = new Date(dataFim);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+
+  if (today < start) {
+    const days = Math.round((start.getTime() - today.getTime()) / msPerDay);
+    return { text: days === 1 ? '1 day to go' : `${days} days to go`, status: 'upcoming' };
+  }
+
+  if (today <= end) {
+    const totalDays = Math.round((end.getTime() - start.getTime()) / msPerDay) + 1;
+    const currentDay = Math.round((today.getTime() - start.getTime()) / msPerDay) + 1;
+    return { text: `Day ${currentDay} of ${totalDays}`, status: 'ongoing' };
+  }
+
+  const daysAgo = Math.round((today.getTime() - end.getTime()) / msPerDay);
+  return { text: daysAgo === 1 ? 'Ended 1 day ago' : `Ended ${daysAgo} days ago`, status: 'past' };
+};
+
+const countdownStyles: Record<CountdownStatus, string> = {
+  upcoming: 'bg-indigo-100 text-indigo-700',
+  ongoing: 'bg-emerald-100 text-emerald-700',
+  past: 'bg-slate-100 text-slate-500'
+};
+
 const mapViagemFromDb = (item: Record<string, unknown>): Viagem => ({
   id: String(item.id ?? ''),
   destino: String(item.destino ?? ''),
@@ -318,6 +358,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   };
 
   const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId) ?? null;
+  const selectedCountdown = selectedTrip ? getCountdown(selectedTrip.dataInicio, selectedTrip.dataFim) : null;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_60%,_#f1f5f9_100%)] p-4 text-slate-800">
@@ -329,6 +370,11 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-100">Travel planner</p>
                 <h1 className="mt-2 text-2xl font-black tracking-tight">My Trips</h1>
+                {selectedTrip && selectedCountdown && (
+                  <p className="mt-1 text-sm font-semibold text-indigo-50">
+                    {selectedTrip.destino} · {selectedCountdown.text}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -416,6 +462,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
             ) : (
               viagens.map((viagem) => {
                 const isSelected = selectedTrip?.id === viagem.id;
+                const countdown = getCountdown(viagem.dataInicio, viagem.dataFim);
 
                 return (
                   <button
@@ -438,7 +485,13 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                       </span>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                    {countdown && (
+                      <span className={`mt-3 inline-block rounded-full px-3 py-1 text-xs font-semibold ${countdownStyles[countdown.status]}`}>
+                        ⏳ {countdown.text}
+                      </span>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
                       <span>🗓️ Itinerary</span>
                       <span className="font-medium text-slate-700">{viagem.roteiro.length} stops</span>
                     </div>
@@ -465,6 +518,15 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                     {formatDate(selectedTrip.dataInicio)} → {formatDate(selectedTrip.dataFim)}
                   </p>
                 </div>
+
+                {selectedCountdown && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Countdown</p>
+                    <p className={`mt-2 inline-block rounded-full px-3 py-1 text-sm font-semibold ${countdownStyles[selectedCountdown.status]}`}>
+                      ⏳ {selectedCountdown.text}
+                    </p>
+                  </div>
+                )}
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-3">
                   <div className="mb-3 flex items-center justify-between">
