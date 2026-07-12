@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.SUPABASE_KEY;
-const supabaseAnonKey = import.meta.env.SUPABASE_URL_APP;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_KEY;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_URL_APP;
 const openKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
 console.log('supabaseUrl:', supabaseUrl);
 console.log('supabaseAnonKey:', supabaseAnonKey);
