@@ -80,21 +80,46 @@ const mapViagemFromDb = (item: Record<string, unknown>): Viagem => ({
   packingList: Array.isArray(item.packing_list) ? (item.packing_list as PackingItem[]) : []
 });
 
-const getWeatherIcon = (main?: string) => {
-  switch (main?.toLowerCase()) {
-    case 'clouds':
-      return '☁️';
-    case 'rain':
-    case 'drizzle':
-      return '🌧️';
-    case 'thunderstorm':
-      return '⛈️';
-    case 'snow':
-      return '❄️';
-    case 'clear':
-      return '☀️';
+const getWeatherFromCode = (code?: number) => {
+  switch (code) {
+    case 0:
+      return { icon: '☀️', condition: 'Clear sky' };
+    case 1:
+    case 2:
+      return { icon: '🌤️', condition: 'Partly cloudy' };
+    case 3:
+      return { icon: '☁️', condition: 'Overcast' };
+    case 45:
+    case 48:
+      return { icon: '🌫️', condition: 'Fog' };
+    case 51:
+    case 53:
+    case 55:
+    case 61:
+    case 63:
+    case 65:
+    case 80:
+    case 81:
+    case 82:
+      return { icon: '🌧️', condition: 'Rain' };
+    case 56:
+    case 57:
+    case 66:
+    case 67:
+      return { icon: '🌧️', condition: 'Freezing rain' };
+    case 71:
+    case 73:
+    case 75:
+    case 77:
+    case 85:
+    case 86:
+      return { icon: '❄️', condition: 'Snow' };
+    case 95:
+    case 96:
+    case 99:
+      return { icon: '⛈️', condition: 'Thunderstorm' };
     default:
-      return '🌤️';
+      return { icon: '🌤️', condition: 'Forecast' };
   }
 };
 
@@ -169,12 +194,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
       return;
     }
 
-    const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
-    if (!apiKey) {
-      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip.dataInicio]: getWeatherPlaceholder() } }));
-      return;
-    }
-
     let active = true;
 
     const buscarClimaDiaria = async () => {
@@ -185,22 +204,23 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
       try {
         const geoResponse = await fetch(
-          `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(selectedTrip.destino)}&limit=1&appid=${apiKey}`
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(selectedTrip.destino)}&count=1`
         );
         const geoData = await geoResponse.json();
-        const city = geoData?.[0];
+        const city = geoData?.results?.[0];
 
-        if (!city?.lat || !city?.lon) {
+        if (!city?.latitude || !city?.longitude) {
           throw new Error('Cidade não encontrada');
         }
 
-        const oneCallRes = await fetch(
-          `https://api.openweathermap.org/data/2.5/onecall?lat=${city.lat}&lon=${city.lon}&exclude=minutely,hourly,alerts&units=metric&appid=${apiKey}`
+        const forecastRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`
         );
-        const oneCall = await oneCallRes.json();
-        const daily = oneCall.daily ?? [];
-
-        const toDateKey = (ts: number) => new Date(ts * 1000).toISOString().split('T')[0];
+        const forecast = await forecastRes.json();
+        const times: string[] = forecast.daily?.time ?? [];
+        const tempsMax: number[] = forecast.daily?.temperature_2m_max ?? [];
+        const tempsMin: number[] = forecast.daily?.temperature_2m_min ?? [];
+        const weathercodes: number[] = forecast.daily?.weathercode ?? [];
 
         const tripStart = new Date(selectedTrip.dataInicio);
         const tripEnd = new Date(selectedTrip.dataFim);
@@ -211,14 +231,15 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
         const forecastsByDate: Record<string, WeatherForecast> = {};
         dayKeys.forEach((key) => {
-          const match = daily.find((dd: any) => toDateKey(dd.dt) === key);
-          if (match) {
+          const index = times.indexOf(key);
+          if (index >= 0) {
+            const weatherData = getWeatherFromCode(weathercodes[index]);
             forecastsByDate[key] = {
-              icon: getWeatherIcon(match.weather?.[0]?.main),
-              condition: match.weather?.[0]?.description ?? 'Forecast',
-              temp: `${Math.round(match.temp?.day ?? 0)}°C`,
-              high: `${Math.round(match.temp?.max ?? 0)}°C`,
-              low: `${Math.round(match.temp?.min ?? 0)}°C`
+              icon: weatherData.icon,
+              condition: weatherData.condition,
+              temp: `${Math.round(tempsMax[index] ?? 0)}°C`,
+              high: `${Math.round(tempsMax[index] ?? 0)}°C`,
+              low: `${Math.round(tempsMin[index] ?? 0)}°C`
             };
           } else {
             forecastsByDate[key] = getWeatherPlaceholder();
