@@ -131,6 +131,11 @@ const getWeatherPlaceholder = (): WeatherForecast => ({
   low: '--'
 });
 
+const normalizeDateKey = (dateValue: string) => {
+  const date = new Date(dateValue);
+  return Number.isNaN(date.getTime()) ? dateValue : date.toISOString().split('T')[0];
+};
+
 export default function TravelModule({ onBack }: TravelModuleProps) {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,16 +195,18 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
     const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId);
     if (!selectedTrip || !selectedTrip.destino?.trim()) {
-      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip?.dataInicio ?? '']: getWeatherPlaceholder() } }));
+      const key = normalizeDateKey(selectedTrip?.dataInicio ?? '');
+      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [key]: getWeatherPlaceholder() } }));
       return;
     }
 
     let active = true;
 
     const buscarClimaDiaria = async () => {
+      const firstDayKey = normalizeDateKey(selectedTrip.dataInicio);
       setWeatherByTripId((prev) => ({
         ...prev,
-        [selectedTripId]: { [selectedTrip.dataInicio]: { icon: '⏳', condition: 'Loading...', temp: '--', high: '--', low: '--' } }
+        [selectedTripId]: { [firstDayKey]: { icon: '⏳', condition: 'Loading...', temp: '--', high: '--', low: '--' } }
       }));
 
       try {
@@ -459,7 +466,9 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   };
 
   const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId) ?? null;
-  const weather = selectedTrip ? (weatherByTripId[selectedTrip.id]?.[selectedTrip.dataInicio] ?? null) : null;
+  const weather = selectedTrip
+    ? weatherByTripId[selectedTrip.id]?.[normalizeDateKey(selectedTrip.dataInicio)] ?? null
+    : null;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_60%,_#f1f5f9_100%)] p-4 text-slate-800">
