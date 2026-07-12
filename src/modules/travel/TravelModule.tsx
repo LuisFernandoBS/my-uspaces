@@ -113,7 +113,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripForm, setNewTripForm] = useState({ destino: '', dataInicio: '', dataFim: '' });
   const [newPackingItem, setNewPackingItem] = useState('');
-  const [weatherByTripId, setWeatherByTripId] = useState<Record<string, WeatherForecast>>({});
+  const [weatherByTripId, setWeatherByTripId] = useState<Record<string, Record<string, WeatherForecast>>>({});
   const [transporteForm, setTransporteForm] = useState({
     sentido: 'ida' as TransporteSentido,
     tipo: '',
@@ -171,22 +171,16 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
     const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
     if (!apiKey) {
-      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: getWeatherPlaceholder() }));
+      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip.dataInicio]: getWeatherPlaceholder() } }));
       return;
     }
 
     let active = true;
 
-    const buscarClima = async () => {
+    const buscarClimaDiaria = async () => {
       setWeatherByTripId((prev) => ({
         ...prev,
-        [selectedTripId]: {
-          icon: '⏳',
-          condition: 'Loading...',
-          temp: '--',
-          high: '--',
-          low: '--'
-        }
+        [selectedTripId]: { [selectedTrip.dataInicio]: { icon: '⏳', condition: 'Loading...', temp: '--', high: '--', low: '--' } }
       }));
 
       try {
@@ -200,31 +194,48 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
           throw new Error('Cidade não encontrada');
         }
 
-        const weatherResponse = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?lat=${city.lat}&lon=${city.lon}&units=metric&appid=${apiKey}`
+        const oneCallRes = await fetch(
+          `https://api.openweathermap.org/data/2.5/onecall?lat=${city.lat}&lon=${city.lon}&exclude=minutely,hourly,alerts&units=metric&appid=${apiKey}`
         );
-        const weatherData = await weatherResponse.json();
+        const oneCall = await oneCallRes.json();
+        const daily = oneCall.daily ?? [];
+
+        const toDateKey = (ts: number) => new Date(ts * 1000).toISOString().split('T')[0];
+
+        const tripStart = new Date(selectedTrip.dataInicio);
+        const tripEnd = new Date(selectedTrip.dataFim);
+        const dayKeys: string[] = [];
+        for (let d = new Date(tripStart); d <= tripEnd; d.setDate(d.getDate() + 1)) {
+          dayKeys.push(new Date(d).toISOString().split('T')[0]);
+        }
+
+        const forecastsByDate: Record<string, WeatherForecast> = {};
+        dayKeys.forEach((key) => {
+          const match = daily.find((dd: any) => toDateKey(dd.dt) === key);
+          if (match) {
+            forecastsByDate[key] = {
+              icon: getWeatherIcon(match.weather?.[0]?.main),
+              condition: match.weather?.[0]?.description ?? 'Forecast',
+              temp: `${Math.round(match.temp?.day ?? 0)}°C`,
+              high: `${Math.round(match.temp?.max ?? 0)}°C`,
+              low: `${Math.round(match.temp?.min ?? 0)}°C`
+            };
+          } else {
+            forecastsByDate[key] = getWeatherPlaceholder();
+          }
+        });
 
         if (!active) return;
 
-        setWeatherByTripId((prev) => ({
-          ...prev,
-          [selectedTripId]: {
-            icon: getWeatherIcon(weatherData.weather?.[0]?.main),
-            condition: weatherData.weather?.[0]?.description ?? 'Weather loaded',
-            temp: `${Math.round(weatherData.main?.temp ?? 0)}°C`,
-            high: `${Math.round(weatherData.main?.temp_max ?? 0)}°C`,
-            low: `${Math.round(weatherData.main?.temp_min ?? 0)}°C`
-          }
-        }));
+        setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: forecastsByDate }));
       } catch {
         if (active) {
-          setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: getWeatherPlaceholder() }));
+          setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip.dataInicio]: getWeatherPlaceholder() } }));
         }
       }
     };
 
-    void buscarClima();
+    void buscarClimaDiaria();
 
     return () => {
       active = false;
@@ -427,7 +438,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   };
 
   const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId) ?? null;
-  const weather = selectedTrip ? weatherByTripId[selectedTrip.id] : null;
+  const weather = selectedTrip ? (weatherByTripId[selectedTrip.id]?.[selectedTrip.dataInicio] ?? null) : null;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_60%,_#f1f5f9_100%)] p-4 text-slate-800">
@@ -441,6 +452,28 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                 <h1 className="mt-2 text-2xl font-black tracking-tight">My Trips</h1>
               </div>
             </div>
+
+                <div className="mt-3 flex gap-2 overflow-x-auto">
+                  {(() => {
+                    const start = new Date(selectedTrip.dataInicio);
+                    const end = new Date(selectedTrip.dataFim);
+                    const dayKeys: string[] = [];
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                      dayKeys.push(new Date(d).toISOString().split('T')[0]);
+                    }
+
+                    return dayKeys.map((key) => {
+                      const f = weatherByTripId[selectedTrip.id]?.[key] ?? getWeatherPlaceholder();
+                      return (
+                        <div key={key} className="flex min-w-[96px] flex-col items-center gap-1 rounded-lg bg-slate-50 px-3 py-2 text-center text-sm text-slate-700">
+                          <div className="text-xl">{f.icon}</div>
+                          <div className="font-medium">{formatDate(key)}</div>
+                          <div className="text-xs">{f.temp}</div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
             <button
               type="button"
               onClick={() => setShowForm(true)}
@@ -556,16 +589,16 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Weather forecast</p>
                         <div className="mt-1 flex items-center gap-2">
-                          <span className="text-xl">{weatherByTripId[viagem.id]?.icon ?? '🌤️'}</span>
+                          <span className="text-xl">{weatherByTripId[viagem.id]?.[viagem.dataInicio]?.icon ?? '🌤️'}</span>
                           <span className="font-semibold text-slate-700">
-                            {weatherByTripId[viagem.id]?.condition ?? 'Checking weather...'}
+                            {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.condition ?? 'Checking weather...'}
                           </span>
                         </div>
                       </div>
                       <div className="text-right text-sm font-semibold text-slate-700">
-                        <div>{weatherByTripId[viagem.id]?.temp ?? '--'}</div>
+                        <div>{weatherByTripId[viagem.id]?.[viagem.dataInicio]?.temp ?? '--'}</div>
                         <div className="text-xs font-medium text-slate-500">
-                          H {weatherByTripId[viagem.id]?.high ?? '--'} · L {weatherByTripId[viagem.id]?.low ?? '--'}
+                          H {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.high ?? '--'} · L {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.low ?? '--'}
                         </div>
                       </div>
                     </div>
