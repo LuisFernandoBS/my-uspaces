@@ -169,7 +169,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
       return;
     }
 
-    const apiKey = import.meta.env.OPENWEATHER_API_KEY;
+    const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
     if (!apiKey) {
       setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: getWeatherPlaceholder() }));
       return;
