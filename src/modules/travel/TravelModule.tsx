@@ -100,6 +100,16 @@ const countdownStyles: Record<CountdownStatus, string> = {
   past: 'bg-slate-100 text-slate-500'
 };
 
+const getTodayISO = () => new Date().toISOString().split('T')[0];
+
+const intervalosSeSobrepoem = (inicioA: string, fimA: string, inicioB: string, fimB: string) => {
+  const a1 = new Date(inicioA).getTime();
+  const a2 = new Date(fimA).getTime();
+  const b1 = new Date(inicioB).getTime();
+  const b2 = new Date(fimB).getTime();
+  return a1 <= b2 && b1 <= a2;
+};
+
 const mapViagemFromDb = (item: Record<string, unknown>): Viagem => ({
   id: String(item.id ?? ''),
   destino: String(item.destino ?? ''),
@@ -118,6 +128,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   const [showForm, setShowForm] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripForm, setNewTripForm] = useState({ destino: '', dataInicio: '', dataFim: '' });
+  const [tripFormError, setTripFormError] = useState<string | null>(null);
   const [newPackingItem, setNewPackingItem] = useState('');
   const [transporteForm, setTransporteForm] = useState({
     sentido: 'ida' as TransporteSentido,
@@ -164,8 +175,26 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
   const salvarViagem = async (event: FormEvent) => {
     event.preventDefault();
+    setTripFormError(null);
 
-    if (!newTripForm.destino.trim() || !newTripForm.dataInicio || !newTripForm.dataFim) return;
+    if (!newTripForm.destino.trim() || !newTripForm.dataInicio || !newTripForm.dataFim) {
+      setTripFormError('Fill in destination, start date and end date.');
+      return;
+    }
+
+    if (newTripForm.dataFim < newTripForm.dataInicio) {
+      setTripFormError('The end date must be on or after the start date.');
+      return;
+    }
+
+    const temSobreposicao = viagens.some((viagem) =>
+      intervalosSeSobrepoem(newTripForm.dataInicio, newTripForm.dataFim, viagem.dataInicio, viagem.dataFim)
+    );
+
+    if (temSobreposicao) {
+      setTripFormError('You already have a trip planned for this date range.');
+      return;
+    }
 
     const packingList = createDefaultPackingList();
     const payload = {
@@ -183,6 +212,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
 
     if (error || !data) {
       console.error('Erro ao salvar viagem:', error);
+      setTripFormError('Could not save the trip. Please try again.');
       return;
     }
 
@@ -190,6 +220,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
     setViagens((prev) => [viagemCriada, ...prev]);
     setSelectedTripId(viagemCriada.id);
     setNewTripForm({ destino: '', dataInicio: '', dataFim: '' });
+    setTripFormError(null);
     setShowForm(false);
   };
 
@@ -222,6 +253,15 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
     const packingListAtualizada = viagemAtual.packingList.map((item) =>
       item.id === itemId ? { ...item, checado: !item.checado } : item
     );
+
+    await atualizarPackingList(viagemId, packingListAtualizada);
+  };
+
+  const removerItemPacking = async (viagemId: string, itemId: string) => {
+    const viagemAtual = viagens.find((viagem) => viagem.id === viagemId);
+    if (!viagemAtual) return;
+
+    const packingListAtualizada = viagemAtual.packingList.filter((item) => item.id !== itemId);
 
     await atualizarPackingList(viagemId, packingListAtualizada);
   };
@@ -399,7 +439,7 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                 <h2 className="text-lg font-semibold text-slate-800">Add a new trip</h2>
                 <p className="text-sm text-slate-500">Start with the essentials and expand later.</p>
               </div>
-              <button type="button" onClick={() => setShowForm(false)} className="text-sm font-medium text-slate-500">
+              <button type="button" onClick={() => { setShowForm(false); setTripFormError(null); }} className="text-sm font-medium text-slate-500">
                 Close
               </button>
             </div>
@@ -410,28 +450,43 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                 <input
                   value={newTripForm.destino}
                   onChange={(event) => setNewTripForm((prev) => ({ ...prev, destino: event.target.value }))}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none ring-0 focus:border-indigo-400"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                   placeholder="Berlin"
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                Start date
+                📅 Start date
                 <input
                   type="date"
                   value={newTripForm.dataInicio}
-                  onChange={(event) => setNewTripForm((prev) => ({ ...prev, dataInicio: event.target.value }))}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none ring-0 focus:border-indigo-400"
+                  min={getTodayISO()}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setNewTripForm((prev) => ({
+                      ...prev,
+                      dataInicio: value,
+                      dataFim: prev.dataFim && prev.dataFim < value ? '' : prev.dataFim
+                    }));
+                  }}
+                  className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-700 outline-none transition [color-scheme:light] focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                End date
+                📅 End date
                 <input
                   type="date"
                   value={newTripForm.dataFim}
+                  min={newTripForm.dataInicio || getTodayISO()}
+                  disabled={!newTripForm.dataInicio}
                   onChange={(event) => setNewTripForm((prev) => ({ ...prev, dataFim: event.target.value }))}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none ring-0 focus:border-indigo-400"
+                  className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-700 outline-none transition [color-scheme:light] focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </label>
+              {tripFormError && (
+                <p className="md:col-span-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">
+                  ⚠️ {tripFormError}
+                </p>
+              )}
               <div className="md:col-span-3 flex justify-end">
                 <button
                   type="submit"
@@ -614,13 +669,15 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                       value={roteiroForm.data}
                       onChange={(event) => setRoteiroForm((prev) => ({ ...prev, data: event.target.value }))}
                       type="date"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      min={selectedTrip.dataInicio}
+                      max={selectedTrip.dataFim}
+                      className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition [color-scheme:light] focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                     />
                     <input
                       value={roteiroForm.horario}
                       onChange={(event) => setRoteiroForm((prev) => ({ ...prev, horario: event.target.value }))}
-                      placeholder="Time"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      type="time"
+                      className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition [color-scheme:light] focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                     />
                     <input
                       value={roteiroForm.local}
@@ -673,17 +730,31 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                   </div>
 
                   <div className="space-y-2">
-                    {selectedTrip.packingList.map((item) => (
-                      <label key={item.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={item.checado}
-                          onChange={() => void alternarItemPacking(selectedTrip.id, item.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span className={item.checado ? 'line-through text-slate-400' : ''}>{item.item}</span>
-                      </label>
-                    ))}
+                    {selectedTrip.packingList.length === 0 ? (
+                      <p className="text-sm text-slate-500">No items yet — add what you can't forget below.</p>
+                    ) : (
+                      selectedTrip.packingList.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                          <label className="flex flex-1 items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={item.checado}
+                              onChange={() => void alternarItemPacking(selectedTrip.id, item.id)}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className={item.checado ? 'line-through text-slate-400' : ''}>{item.item}</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => void removerItemPacking(selectedTrip.id, item.id)}
+                            className="rounded-full px-2 text-xs font-semibold text-rose-500 hover:bg-rose-50"
+                            aria-label={`Remove ${item.item}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="mt-3 flex gap-2">
