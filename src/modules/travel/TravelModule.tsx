@@ -433,15 +433,9 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_60%,_#f1f5f9_100%)] p-4 text-slate-800">
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <header className="rounded-[28px] border border-indigo-100 bg-gradient-to-br from-indigo-600 via-violet-600 to-sky-500 p-5 text-white shadow-[0_20px_55px_-20px_rgba(79,70,229,0.55)]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <button
-                type="button"
-                onClick={() => onBack?.()}
-                className="rounded-full bg-white/15 px-3 py-2 text-sm font-semibold text-white backdrop-blur-sm"
-              >
-                ← Back
-              </button>
+          <button type="button" onClick={() => onBack?.()} className="text-xs bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full mb-3 border border-white/20">← Back</button>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-100">Travel planner</p>
                 <h1 className="mt-2 text-2xl font-black tracking-tight">My Trips</h1>

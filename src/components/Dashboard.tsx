@@ -45,7 +45,7 @@ export default function Dashboard() {
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{greeting}, Princesa!</h1>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-lg font-semibold text-white shadow-md">
-              A
+              L
             </div>
           </div>
         </header>
