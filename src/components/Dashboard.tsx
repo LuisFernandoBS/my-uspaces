@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import HoursModule from '../modules/hours/HoursModule';
 import TravelModule from '../modules/travel/TravelModule';
+import { supabase } from '../utils/supabaseClient';
 
 type ViewMode = 'home' | 'hours' | 'travel';
 
@@ -13,6 +14,8 @@ const formatDate = (date: Date) =>
 
 export default function Dashboard() {
   const [activeView, setActiveView] = useState<ViewMode>('home');
+  const [nextTrip, setNextTrip] = useState<any | null>(null);
+  const [loadingNextTrip, setLoadingNextTrip] = useState(true);
 
   const today = useMemo(() => new Date(), []);
   const greeting = useMemo(() => {
@@ -26,6 +29,31 @@ export default function Dashboard() {
     { label: 'Add Shift', icon: '⏰', action: () => setActiveView('hours') },
     { label: 'New Trip', icon: '✈️', action: () => setActiveView('travel') }
   ];
+
+  useEffect(() => {
+    const fetchNext = async () => {
+      setLoadingNextTrip(true);
+      try {
+        const todayIso = new Date().toISOString().split('T')[0];
+        const { data } = await supabase.from('trips').select('*').order('data_inicio', { ascending: true });
+        if (data && data.length) {
+          const upcoming = data.find((t: any) => {
+            const start = String(t.data_inicio || t.dataInicio || t.dataInicio);
+            return start >= todayIso;
+          }) || data[0];
+          setNextTrip(upcoming ?? null);
+        } else {
+          setNextTrip(null);
+        }
+      } catch (e) {
+        setNextTrip(null);
+      } finally {
+        setLoadingNextTrip(false);
+      }
+    };
+
+    void fetchNext();
+  }, []);
 
   if (activeView === 'hours') {
     return <HoursModule onBack={() => setActiveView('home')} />;
@@ -54,7 +82,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setActiveView('hours')}
-            className="rounded-[28px] border border-gray-100/70 bg-white p-6 text-left shadow-sm transition-all duration-200 active:scale-[0.98]"
+            className="rounded-[28px] border border-gray-100/70 bg-white p-6 text-left shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -79,20 +107,22 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setActiveView('travel')}
-            className="rounded-[28px] border border-gray-100/70 bg-white p-6 text-left shadow-sm transition-all duration-200 active:scale-[0.98]"
+            className="rounded-[28px] border border-gray-100/70 bg-gradient-to-br from-sky-50 to-indigo-50 p-6 text-left shadow-lg transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-sky-600">Travel Module</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Next Trip: Miami Beach</h2>
-                <p className="mt-2 text-sm text-slate-500">Your next adventure is just around the corner.</p>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900">Next Trip: {loadingNextTrip ? 'Loading...' : nextTrip ? nextTrip.destino ?? nextTrip.destiny ?? '—' : 'No upcoming trips'}</h2>
+                <p className="mt-2 text-sm text-slate-500">{nextTrip ? `${formatDate(new Date(nextTrip.data_inicio ?? nextTrip.dataInicio))} — ${formatDate(new Date(nextTrip.data_fim ?? nextTrip.dataFim))}` : 'Plan a new trip to get started.'}</p>
               </div>
-              <div className="rounded-2xl bg-sky-50 px-3 py-2 text-2xl">🌴</div>
+              <div className="rounded-2xl bg-sky-50 px-3 py-2 text-2xl animate-bounce">🌴</div>
             </div>
 
-            <div className="mt-6 flex items-center justify-between rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
-              <span>12 days left</span>
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">☀️ 24°C</span>
+            <div className="mt-6 flex items-center justify-between rounded-2xl bg-white/60 p-3 text-sm text-slate-600">
+              <span>
+                {nextTrip ? `${Math.max(0, Math.ceil((new Date((nextTrip.data_inicio ?? nextTrip.dataInicio)).getTime() - new Date().setHours(0,0,0,0)) / 86400000))} days left` : '—'}
+              </span>
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">{nextTrip ? '☀️' : ''} {nextTrip ? '' : ''}</span>
             </div>
           </button>
         </section>
