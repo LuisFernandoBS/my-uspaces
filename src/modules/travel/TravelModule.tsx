@@ -34,14 +34,6 @@ interface Viagem {
   packingList: PackingItem[];
 }
 
-interface WeatherForecast {
-  icon: string;
-  condition: string;
-  temp: string;
-  high: string;
-  low: string;
-}
-
 type TransporteSentido = 'ida' | 'volta';
 
 interface TravelModuleProps {
@@ -80,62 +72,6 @@ const mapViagemFromDb = (item: Record<string, unknown>): Viagem => ({
   packingList: Array.isArray(item.packing_list) ? (item.packing_list as PackingItem[]) : []
 });
 
-const getWeatherFromCode = (code?: number) => {
-  switch (code) {
-    case 0:
-      return { icon: '☀️', condition: 'Clear sky' };
-    case 1:
-    case 2:
-      return { icon: '🌤️', condition: 'Partly cloudy' };
-    case 3:
-      return { icon: '☁️', condition: 'Overcast' };
-    case 45:
-    case 48:
-      return { icon: '🌫️', condition: 'Fog' };
-    case 51:
-    case 53:
-    case 55:
-    case 61:
-    case 63:
-    case 65:
-    case 80:
-    case 81:
-    case 82:
-      return { icon: '🌧️', condition: 'Rain' };
-    case 56:
-    case 57:
-    case 66:
-    case 67:
-      return { icon: '🌧️', condition: 'Freezing rain' };
-    case 71:
-    case 73:
-    case 75:
-    case 77:
-    case 85:
-    case 86:
-      return { icon: '❄️', condition: 'Snow' };
-    case 95:
-    case 96:
-    case 99:
-      return { icon: '⛈️', condition: 'Thunderstorm' };
-    default:
-      return { icon: '🌤️', condition: 'Forecast' };
-  }
-};
-
-const getWeatherPlaceholder = (): WeatherForecast => ({
-  icon: '🌤️',
-  condition: 'Weather unavailable',
-  temp: '--',
-  high: '--',
-  low: '--'
-});
-
-const normalizeDateKey = (dateValue: string) => {
-  const date = new Date(dateValue);
-  return Number.isNaN(date.getTime()) ? dateValue : date.toISOString().split('T')[0];
-};
-
 export default function TravelModule({ onBack }: TravelModuleProps) {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,7 +79,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripForm, setNewTripForm] = useState({ destino: '', dataInicio: '', dataFim: '' });
   const [newPackingItem, setNewPackingItem] = useState('');
-  const [weatherByTripId, setWeatherByTripId] = useState<Record<string, Record<string, WeatherForecast>>>({});
   const [transporteForm, setTransporteForm] = useState({
     sentido: 'ida' as TransporteSentido,
     tipo: '',
@@ -180,95 +115,11 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   }, []);
 
   useEffect(() => {
-    if (!viagens.length) {
-      setWeatherByTripId({});
-      return;
-    }
+    if (!viagens.length) return;
 
     if (!selectedTripId || !viagens.some((viagem) => viagem.id === selectedTripId)) {
       setSelectedTripId(viagens[0].id);
     }
-  }, [selectedTripId, viagens]);
-
-  useEffect(() => {
-    if (!selectedTripId) return;
-
-    const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId);
-    if (!selectedTrip || !selectedTrip.destino?.trim()) {
-      const key = normalizeDateKey(selectedTrip?.dataInicio ?? '');
-      setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [key]: getWeatherPlaceholder() } }));
-      return;
-    }
-
-    let active = true;
-
-    const buscarClimaDiaria = async () => {
-      const firstDayKey = normalizeDateKey(selectedTrip.dataInicio);
-      setWeatherByTripId((prev) => ({
-        ...prev,
-        [selectedTripId]: { [firstDayKey]: { icon: '⏳', condition: 'Loading...', temp: '--', high: '--', low: '--' } }
-      }));
-
-      try {
-        const geoResponse = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(selectedTrip.destino)}&count=1`
-        );
-        const geoData = await geoResponse.json();
-        const city = geoData?.results?.[0];
-
-        if (!city?.latitude || !city?.longitude) {
-          throw new Error('Cidade não encontrada');
-        }
-
-        const forecastRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`
-        );
-        const forecast = await forecastRes.json();
-        const times: string[] = forecast.daily?.time ?? [];
-        const tempsMax: number[] = forecast.daily?.temperature_2m_max ?? [];
-        const tempsMin: number[] = forecast.daily?.temperature_2m_min ?? [];
-        const weathercodes: number[] = forecast.daily?.weathercode ?? [];
-
-        const tripStart = new Date(selectedTrip.dataInicio);
-        const tripEnd = new Date(selectedTrip.dataFim);
-        const dayKeys: string[] = [];
-        for (let d = new Date(tripStart); d <= tripEnd; d.setDate(d.getDate() + 1)) {
-          dayKeys.push(new Date(d).toISOString().split('T')[0]);
-        }
-
-        const forecastsByDate: Record<string, WeatherForecast> = {};
-        dayKeys.forEach((key) => {
-          const index = times.indexOf(key);
-          if (index >= 0) {
-            const weatherData = getWeatherFromCode(weathercodes[index]);
-            forecastsByDate[key] = {
-              icon: weatherData.icon,
-              condition: weatherData.condition,
-              temp: `${Math.round(tempsMax[index] ?? 0)}°C`,
-              high: `${Math.round(tempsMax[index] ?? 0)}°C`,
-              low: `${Math.round(tempsMin[index] ?? 0)}°C`
-            };
-          } else {
-            forecastsByDate[key] = getWeatherPlaceholder();
-          }
-        });
-
-        if (!active) return;
-
-        setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: forecastsByDate }));
-      } catch {
-        if (active) {
-          const fallbackKey = normalizeDateKey(selectedTrip.dataInicio);
-          setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [fallbackKey]: getWeatherPlaceholder() } }));
-        }
-      }
-    };
-
-    void buscarClimaDiaria();
-
-    return () => {
-      active = false;
-    };
   }, [selectedTripId, viagens]);
 
   const salvarViagem = async (event: FormEvent) => {
@@ -467,9 +318,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
   };
 
   const selectedTrip = viagens.find((viagem) => viagem.id === selectedTripId) ?? null;
-  const weather = selectedTrip
-    ? weatherByTripId[selectedTrip.id]?.[normalizeDateKey(selectedTrip.dataInicio)] ?? null
-    : null;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_60%,_#f1f5f9_100%)] p-4 text-slate-800">
@@ -484,27 +332,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
               </div>
             </div>
 
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {selectedTrip ? (() => {
-                    const start = new Date(selectedTrip.dataInicio);
-                    const end = new Date(selectedTrip.dataFim);
-                    const dayKeys: string[] = [];
-                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                      dayKeys.push(new Date(d).toISOString().split('T')[0]);
-                    }
-
-                    return dayKeys.map((key) => {
-                      const f = weatherByTripId[selectedTrip.id]?.[key] ?? getWeatherPlaceholder();
-                      return (
-                        <div key={key} className="flex min-w-[96px] flex-col items-center gap-1 rounded-lg bg-slate-50 px-3 py-2 text-center text-sm text-slate-700">
-                          <div className="text-xl">{f.icon}</div>
-                          <div className="font-medium">{formatDate(key)}</div>
-                          <div className="text-xs">{f.temp}</div>
-                        </div>
-                      );
-                    });
-                  })() : null}
-                </div>
             <button
               type="button"
               onClick={() => setShowForm(true)}
@@ -615,24 +442,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                       <span>🗓️ Itinerary</span>
                       <span className="font-medium text-slate-700">{viagem.roteiro.length} stops</span>
                     </div>
-
-                    <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Weather forecast</p>
-                        <div className="mt-1 flex items-center gap-2">
-                          <span className="text-xl">{weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.icon ?? '🌤️'}</span>
-                          <span className="font-semibold text-slate-700">
-                            {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.condition ?? 'Checking weather...'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right text-sm font-semibold text-slate-700">
-                        <div>{weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.temp ?? '--'}</div>
-                        <div className="text-xs font-medium text-slate-500">
-                          H {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.high ?? '--'} · L {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.low ?? '--'}
-                        </div>
-                      </div>
-                    </div>
                   </button>
                 );
               })
@@ -655,20 +464,6 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                   <p className="mt-2 text-sm text-slate-500">
                     {formatDate(selectedTrip.dataInicio)} → {formatDate(selectedTrip.dataFim)}
                   </p>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Weather forecast</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-700">{weather?.condition ?? 'Checking weather...'}</p>
-                    </div>
-                    <div className="text-3xl">{weather?.icon ?? '🌤️'}</div>
-                  </div>
-                  <div className="mt-3 flex items-end justify-between text-sm text-slate-600">
-                    <span className="text-lg font-semibold text-slate-800">{weather?.temp ?? '--'}</span>
-                    <span>H {weather?.high ?? '--'} · L {weather?.low ?? '--'}</span>
-                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-3">
