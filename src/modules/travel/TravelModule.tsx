@@ -258,7 +258,8 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
         setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: forecastsByDate }));
       } catch {
         if (active) {
-          setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [selectedTrip.dataInicio]: getWeatherPlaceholder() } }));
+          const fallbackKey = normalizeDateKey(selectedTrip.dataInicio);
+          setWeatherByTripId((prev) => ({ ...prev, [selectedTripId]: { [fallbackKey]: getWeatherPlaceholder() } }));
         }
       }
     };
@@ -619,16 +620,16 @@ export default function TravelModule({ onBack }: TravelModuleProps) {
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Weather forecast</p>
                         <div className="mt-1 flex items-center gap-2">
-                          <span className="text-xl">{weatherByTripId[viagem.id]?.[viagem.dataInicio]?.icon ?? '🌤️'}</span>
+                          <span className="text-xl">{weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.icon ?? '🌤️'}</span>
                           <span className="font-semibold text-slate-700">
-                            {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.condition ?? 'Checking weather...'}
+                            {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.condition ?? 'Checking weather...'}
                           </span>
                         </div>
                       </div>
                       <div className="text-right text-sm font-semibold text-slate-700">
-                        <div>{weatherByTripId[viagem.id]?.[viagem.dataInicio]?.temp ?? '--'}</div>
+                        <div>{weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.temp ?? '--'}</div>
                         <div className="text-xs font-medium text-slate-500">
-                          H {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.high ?? '--'} · L {weatherByTripId[viagem.id]?.[viagem.dataInicio]?.low ?? '--'}
+                          H {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.high ?? '--'} · L {weatherByTripId[viagem.id]?.[normalizeDateKey(viagem.dataInicio)]?.low ?? '--'}
                         </div>
                       </div>
                     </div>
