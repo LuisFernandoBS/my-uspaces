@@ -5,6 +5,8 @@ import { supabase } from '../utils/supabaseClient';
 
 type ViewMode = 'home' | 'hours' | 'travel';
 
+const WEEKLY_GOAL_HOURS = 45;
+
 const formatDate = (date: Date) =>
   date.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -12,10 +14,38 @@ const formatDate = (date: Date) =>
     day: 'numeric'
   });
 
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getWeekStart = (date: Date) => {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setDate(next.getDate() + diff);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const getWeekDates = (weekStart: Date) => {
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + i);
+    dates.push(formatDateKey(day));
+  }
+  return dates;
+};
+
 export default function Dashboard() {
   const [activeView, setActiveView] = useState<ViewMode>('home');
   const [nextTrip, setNextTrip] = useState<any | null>(null);
   const [loadingNextTrip, setLoadingNextTrip] = useState(true);
+  const [weeklyHours, setWeeklyHours] = useState(0);
+  const [loadingHours, setLoadingHours] = useState(true);
 
   const today = useMemo(() => new Date(), []);
   const greeting = useMemo(() => {
@@ -31,6 +61,8 @@ export default function Dashboard() {
   ];
 
   useEffect(() => {
+    if (activeView !== 'home') return;
+
     const fetchNext = async () => {
       setLoadingNextTrip(true);
       try {
@@ -53,7 +85,37 @@ export default function Dashboard() {
     };
 
     void fetchNext();
-  }, []);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (activeView !== 'home') return;
+
+    const fetchWeeklyHours = async () => {
+      setLoadingHours(true);
+      try {
+        const weekStart = getWeekStart(new Date());
+        const weekDates = getWeekDates(weekStart);
+
+        const { data, error } = await supabase
+          .from('work_logs')
+          .select('date, total_hours')
+          .in('date', weekDates);
+
+        if (!error && data) {
+          const total = data.reduce((acc: number, row: any) => acc + (Number(row.total_hours) || 0), 0);
+          setWeeklyHours(total);
+        } else {
+          setWeeklyHours(0);
+        }
+      } catch (e) {
+        setWeeklyHours(0);
+      } finally {
+        setLoadingHours(false);
+      }
+    };
+
+    void fetchWeeklyHours();
+  }, [activeView]);
 
   if (activeView === 'hours') {
     return <HoursModule onBack={() => setActiveView('home')} />;
@@ -62,6 +124,8 @@ export default function Dashboard() {
   if (activeView === 'travel') {
     return <TravelModule onBack={() => setActiveView('home')} />;
   }
+
+  const weeklyProgress = Math.min(Math.round((weeklyHours / WEEKLY_GOAL_HOURS) * 100), 100);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 text-slate-800">
@@ -88,7 +152,13 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-semibold text-indigo-600">Hours Module</p>
                 <h2 className="mt-2 text-xl font-semibold text-slate-900">Work Day</h2>
-                <p className="mt-2 text-sm text-slate-500">Today you are on track with your weekly hours.</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {loadingHours
+                    ? 'Loading your hours...'
+                    : weeklyProgress >= 100
+                      ? 'You hit your weekly goal! 🎉'
+                      : `You're at ${weeklyProgress}% of your weekly hours.`}
+                </p>
               </div>
               <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-2xl">💼</div>
             </div>
@@ -96,10 +166,13 @@ export default function Dashboard() {
             <div className="mt-6 rounded-2xl bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm text-slate-600">
                 <span>Weekly total</span>
-                <span className="font-semibold text-slate-900">39.5h</span>
+                <span className="font-semibold text-slate-900">{loadingHours ? '—' : `${weeklyHours.toFixed(1)}h`}</span>
               </div>
               <div className="mt-2 h-2 rounded-full bg-slate-200">
-                <div className="h-2 w-[83%] rounded-full bg-emerald-500" />
+                <div
+                  className={`h-2 rounded-full transition-all duration-500 ${weeklyHours > 46 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                  style={{ width: loadingHours ? '0%' : `${weeklyProgress}%` }}
+                />
               </div>
             </div>
           </button>
